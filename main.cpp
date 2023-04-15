@@ -51,7 +51,7 @@ double runge_stepsize(double eps)
 void euler_modified(double a, double b, double eps, double *S, double *E, double *I, double *R, double *D)
 {
     double h = runge_stepsize(eps);
-    int n = (int)ceil((b - a) / h);
+    int n = (int)ceil((b - a) / h) + 1;
     double s = *S, e = *E, i = *I, r = *R, d = *D;
     double si, ei, ii, ri, di;
     double s1, e1, i1, r1, d1;
@@ -88,7 +88,7 @@ int main()
     std::cout.precision(4);
     std::cout.setf(std::ios::fixed);
 
-    int a = 1, b = 90;
+    int a = 0, b = 90;
     double e = E0, i = 0, r = R0, d = 0, s = N0 - i - e - r - d;
 
     std::cout << "\nНачальные данные для модели SEIR-D:\nN0 = " << N0 << " (всё население)\nS0 = " << (int)floor(s) << " (восприимчивое население)\nE0 = " << E0 << " (бессимптомно инфицированные)\nI0 = " << (int)floor(i) << " (выявленные случаи / инфицированные с симптомами)\nR0 = " << R0 << " (вылечившиеся)\nD0 = " << (int)floor(d) << " (умершие)\na = " << a << " (день начала отсчёта), b = " << b << " (день конца отсчёта)" << std::endl;
