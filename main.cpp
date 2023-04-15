@@ -1,6 +1,5 @@
 #include <cmath>
 #include <iostream>
-#include <fstream>
 
 #define MU 0.0188     // коэф. смертности от COVID-19
 #define BETA 0.999    // скорость выздоровления заражённых случаев
@@ -13,9 +12,9 @@
 #define R0 24         // начальное количество вылеченных
 #define GAMMA 0       // скорость повторного заражения, раз (0 - устойчивый иммунитет)
 #define C 1           // ограничение на передвижения граждан (изначально - 1 + C_ISOL * (...), сокращена до 1, т.к. C_ISOL = 0)
-
 // N - вся популяция, S - восприимчивые, E - заражённые бессимптомные, I - инфицированные с симптомами, R - вылеченные, D - умершие
 
+// система дифференциальных уравнений модели SEIR-D
 double dS_dt(double S, double E, double I, double R, double D)
 {
     double N = S + E + I + R + D;
@@ -43,19 +42,15 @@ double dD_dt(double S, double E, double I, double R, double D)
     return MU * I + 0 * (S + E + R + D);
 }
 
-double runge_stepsize(double eps)
+// метод Эйлера-Коши (метод Эйлера с пересчётом)
+void euler_modified(double a, double b, double h, double *S, double *E, double *I, double *R, double *D)
 {
-    return pow(eps, 0.25);
-}
-
-void euler_modified(double a, double b, double eps, double *S, double *E, double *I, double *R, double *D)
-{
-    double h = runge_stepsize(eps);
     int n = (int)ceil((b - a) / h) + 1;
     double s = *S, e = *E, i = *I, r = *R, d = *D;
     double si, ei, ii, ri, di;
     double s1, e1, i1, r1, d1;
-    for (int k = 1; k <= n; k++)
+
+    for (int k = 0; k <= n; k++)
     {
         s1 = s + h * dS_dt(s, e, i, r, d);
         e1 = e + h * dE_dt(s, e, i, r, d);
@@ -85,16 +80,32 @@ void euler_modified(double a, double b, double eps, double *S, double *E, double
 
 int main()
 {
-    std::cout.precision(4);
+    std::cout.precision(12);
     std::cout.setf(std::ios::fixed);
 
+    // начальные данные
     int a = 0, b = 90;
+    double eps = 1e-2, h = 1;
     double e = E0, i = 0, r = R0, d = 0, s = N0 - i - e - r - d;
+    std::cout << "\nНачальные данные для модели SEIR-D:\nN0 = " << N0 << " (всё население)\nS0 = " << (int)floor(s) << " (восприимчивое население)\nE0 = " << E0 << " (бессимптомно инфицированные)\nI0 = " << (int)floor(i) << " (выявленные случаи / инфицированные с симптомами)\nR0 = " << R0 << " (вылечившиеся)\nD0 = " << (int)floor(d) << " (умершие)\na = " << a << " (день начала отсчёта), b = " << b << " (день конца отсчёта), h = " << h << " (шаг разбиения)" << std::endl;
 
-    std::cout << "\nНачальные данные для модели SEIR-D:\nN0 = " << N0 << " (всё население)\nS0 = " << (int)floor(s) << " (восприимчивое население)\nE0 = " << E0 << " (бессимптомно инфицированные)\nI0 = " << (int)floor(i) << " (выявленные случаи / инфицированные с симптомами)\nR0 = " << R0 << " (вылечившиеся)\nD0 = " << (int)floor(d) << " (умершие)\na = " << a << " (день начала отсчёта), b = " << b << " (день конца отсчёта)" << std::endl;
-    euler_modified(a, b, 1e-2, &s, &e, &i, &r, &d);
+    euler_modified(a, b, h, &s, &e, &i, &r, &d); // первая итерация
+
+    double delta, d1 = d;
+    int k = 1;
+    do // цикл до заданной точности решения
+    {
+        h = h / 2;
+        e = E0, i = 0, r = R0, d = 0, s = N0 - i - e - r - d;
+        euler_modified(a, b, h, &s, &e, &i, &r, &d);
+        delta = fabs(d - d1);
+        d1 = d;
+        std::cout << k << ": delta = " << delta << ", h = " << h << std::endl;
+        k++;
+    } while (delta > eps);
+
     std::cout << "\nРезультаты метода Эйлера-Коши (метода Эйлера с пересчётом):\nE (бессимптомно инфицированных) = " << (int)floor(e) << "\nI (выявленные случаи / инфицированные с симптомами) = " << (int)floor(i) << "\nD (количество умерших) = " << (int)floor(d) << std::endl;
     double n = s + e + i + r + d;
-    std::cout << "N (final) = " << (int)floor(n) << " = N0 (начальное население) => ни один человек не потерян\n\n";
+    std::cout << "N (final) = " << (int)round(n) << " = N0 (начальное население) => ни один человек не потерян\n\n";
     return 0;
 }
