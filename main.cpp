@@ -1,4 +1,6 @@
+#include <cmath>
 #include <iostream>
+#include <fstream>
 
 #define MU 0.0188     // коэф. смертности от COVID-19
 #define BETA 0.999    // скорость выздоровления заражённых случаев
@@ -6,11 +8,13 @@
 #define ALPHA_E 0.999 // коэф. заражения между бессимптомно-инфицированным и восприимчивым населением
 #define ALPHA_I 0.999 // коэф. заражения между инфицированным и восприимчивым населением (социальные факторы)
 #define K 0.042       // частота появления симптомов в открытых случаях
+#define N0 2798170    // население Новосибирской области
 #define E0 99         // начальное количество бессимптомно инфицированных
 #define R0 24         // начальное количество вылеченных
 #define GAMMA 0       // скорость повторного заражения, раз (0 - устойчивый иммунитет)
-#define TETTA 2       // латетный/инкубационный период (запаздывание заразности), дни
-#define C 1           // ограничение на передвижения граждан (изначально - 1 + C_ISOL * (...), сокращена т.к. C_ISOL = 0)
+#define C 1           // ограничение на передвижения граждан (изначально - 1 + C_ISOL * (...), сокращена до 1, т.к. C_ISOL = 0)
+
+// N - вся популяция, S - восприимчивые, E - заражённые бессимптомные, I - инфицированные с симптомами, R - вылеченные, D - умершие
 
 double dS_dt(double S, double E, double I, double R, double D)
 {
@@ -26,25 +30,69 @@ double dE_dt(double S, double E, double I, double R, double D)
 
 double dI_dt(double S, double E, double I, double R, double D)
 {
-    return K * E - BETA * I - MU * I;
+    return K * E - BETA * I - MU * I + 0 * (S + R + D);
 }
 
 double dR_dt(double S, double E, double I, double R, double D)
 {
-    return BETA * I + RO * E - GAMMA * R;
+    return BETA * I + RO * E - GAMMA * R + 0 * (S + D);
 }
 
 double dD_dt(double S, double E, double I, double R, double D)
 {
-    return MU * I;
+    return MU * I + 0 * (S + E + R + D);
+}
+
+double runge_stepsize(double eps)
+{
+    return pow(eps, 0.25);
+}
+
+void euler_modified(double a, double b, double eps, double *S, double *E, double *I, double *R, double *D)
+{
+    double h = runge_stepsize(eps);
+    int n = (int)ceil((b - a) / h);
+    double s = *S, e = *E, i = *I, r = *R, d = *D;
+    double si, ei, ii, ri, di;
+    double s1, e1, i1, r1, d1;
+    for (int k = 1; k <= n; k++)
+    {
+        s1 = s + h * dS_dt(s, e, i, r, d);
+        e1 = e + h * dE_dt(s, e, i, r, d);
+        i1 = i + h * dI_dt(s, e, i, r, d);
+        r1 = r + h * dR_dt(s, e, i, r, d);
+        d1 = d + h * dD_dt(s, e, i, r, d);
+        // std::cout << k << ": S1 = " << s1 << "; E1 = " << e1 << "; I1 = " << i1 << "; R1 = " << r1 << "; D1 = " << d1 << std::endl;
+        si = s + (h / 2) * (dS_dt(s, e, i, r, d) + dS_dt(s1, e1, i1, r1, d1));
+        ei = e + (h / 2) * (dE_dt(s, e, i, r, d) + dE_dt(s1, e1, i1, r1, d1));
+        ii = i + (h / 2) * (dI_dt(s, e, i, r, d) + dI_dt(s1, e1, i1, r1, d1));
+        ri = r + (h / 2) * (dR_dt(s, e, i, r, d) + dR_dt(s1, e1, i1, r1, d1));
+        di = d + (h / 2) * (dD_dt(s, e, i, r, d) + dD_dt(s1, e1, i1, r1, d1));
+        // std::cout << k << ": Si = " << si << "; Ei = " << ei << "; Ii = " << ii << "; Ri = " << ri << "; Di = " << di << std::endl;
+        s = s1;
+        e = e1;
+        i = i1;
+        r = r1;
+        d = d1;
+        // std::cout << k << ": S = " << s << "; E = " << e << "; I = " << i << "; R = " << r << "; D = " << d << std::endl;
+    }
+    *S = s;
+    *E = e;
+    *I = i;
+    *R = r;
+    *D = d;
 }
 
 int main()
 {
-    double a = 0, b = 90, eps = 1e-2;
-
-    std::cout.precision(5);
+    std::cout.precision(4);
     std::cout.setf(std::ios::fixed);
 
+    int a = 1, b = 90;
+    double e = E0, i = 0, r = R0, d = 0, s = N0 - i - e - r - d;
+
+    std::cout << "\nНачальные данные для модели SEIR-D:\nN0 = " << N0 << " (всё население)\nS0 = " << (int)floor(s) << " (восприимчивое население)\nE0 = " << E0 << " (бессимптомно инфицированные)\nI0 = " << (int)floor(i) << " (выявленные случаи / инфицированные с симптомами)\nR0 = " << R0 << " (вылечившиеся)\nD0 = " << (int)floor(d) << " (умершие)\na = " << a << " (день начала отсчёта), b = " << b << " (день конца отсчёта)" << std::endl;
+    euler_modified(a, b, 1e-2, &s, &e, &i, &r, &d);
+    std::cout << "\nРезультаты метода Эйлера-Коши (метода Эйлера с пересчётом):\nE (количество бессимптомных заражений) = " << (int)floor(e) << "\nI (выявленные случаи / инфицированные с симптомами) = " << (int)floor(i) << "\nD (количество умерших) = " << (int)floor(d) << "\n\n";
     return 0;
 }
